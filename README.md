@@ -1,56 +1,54 @@
-# Sentinel-fi
+# Sentinel-FI
 
-A streaming data pipeline that ingests high-throughput financial transactions, detects anomalies in real time using Redis-backed sliding windows, and batch-persists results — built to demonstrate concurrent systems design, observability, and production-grade Python.
+**Real-time financial anomaly detection engine** — ingests high-throughput transaction streams, flags fraud in milliseconds using Redis-backed sliding windows, and batch-persists results for audit.
+
+Built to demonstrate concurrent systems design, streaming data pipelines, and production-grade Python.
 
 ---
 
-## Why This Project
+## Why This Exists
 
-Financial platforms process thousands of transactions per second and need to flag fraud *before* it settles — not in a nightly batch job. This engine simulates that constraint: a producer generates 50–100 transactions/sec, a consumer evaluates every one against multiple anomaly rules using only in-memory state, and a batch inserter buffers writes to avoid hammering the database. The entire hot path touches Redis and never hits disk.
+Financial platforms process thousands of transactions per second and need to flag fraud *before* it settles — not in a nightly batch job. Sentinel-FI simulates that constraint: a producer generates 50–100 transactions/sec, a consumer evaluates every one against multiple anomaly rules using only in-memory state, and a batch inserter buffers writes to avoid hammering the database. The entire hot path touches Redis and never hits disk.
 
 ---
 
 ## Architecture
 
 ```
-┌──────────────┐        XADD         ┌──────────────────┐      XREADGROUP      ┌────────────────────┐
-│              │ ──────────────────▶ │                  │ ───────────────────▶ │                    │
-│   Producer   │   100 TPS (JSON)    │   Redis Stream   │   Consumer Group     │   FastAPI Consumer │
-│  (asyncio)   │                     │                  │                      │   (async workers)  │
-└──────────────┘                     └──────────────────┘                      └─────────┬──────────┘
-                                                                                        │
-                                                                           ┌────────────┴────────────┐
-                                                                           │                         │
-                                                                           ▼                         ▼
-                                                                 ┌──────────────────┐     ┌─────────────────┐
-                                                                 │  Redis Sorted    │     │  Batch Inserter │
-                                                                 │  Sets (ZADD)     │     │  (50 txns / 5s) │
-                                                                 │  5-min sliding   │     │                 │
-                                                                 │  window per user │     └────────┬────────┘
-                                                                 └────────┬─────────┘              │
-                                                                          │                        ▼
-                                                                          │              ┌─────────────────┐
-                                                                          └─────────────▶│   PostgreSQL    │
-                                                                            anomaly      │   (txn log +    │
-                                                                            flags        │   anomaly flags)│
-                                                                                         └─────────────────┘
+┌──────────────┐       XADD        ┌────────────────┐     XREADGROUP    ┌───────────────────┐
+│   Producer   │ ────────────────▶ │  Redis Stream  │ ─────────────────▶│  Consumer Workers │
+│  (asyncio)   │  100 TPS (JSON)   │                │  Consumer Group   │  (async Python)   │
+└──────────────┘                   └────────────────┘                   └─────────┬─────────┘
+                                                                                  │
+                                                                     ┌────────────┴────────────┐
+                                                                     ▼                         ▼
+                                                           ┌──────────────────┐     ┌──────────────────┐
+                                                           │  Redis Sorted    │     │  Batch Inserter  │
+                                                           │  Sets (ZADD)     │     │  (50 txns / 5s)  │
+                                                           │  5-min sliding   │     └────────┬─────────┘
+                                                           │  window / user   │              │
+                                                           └────────┬─────────┘              ▼
+                                                                    │              ┌──────────────────┐
+                                                                    └─────────────▶│   PostgreSQL     │
+                                                                      anomaly      │   txns + flags   │
+                                                                      flags        └──────────────────┘
 ```
 
-**Data flow:** The Producer pushes JSON transactions into a Redis Stream via `XADD`. The Consumer reads them through a Consumer Group (`XREADGROUP`), which enables horizontal scaling — multiple workers split the load automatically with built-in acknowledgment and at-least-once delivery. Each transaction is evaluated against the anomaly rules using a Redis Sorted Set sliding window (no database queries on the hot path). Processed transactions accumulate in an in-memory buffer that flushes to PostgreSQL in batches.
+**Data flow:** The Producer pushes JSON transactions into a Redis Stream via `XADD`. The Consumer reads them through a Consumer Group (`XREADGROUP`), enabling horizontal scaling with built-in acknowledgment and at-least-once delivery. Each transaction is evaluated against anomaly rules using a per-user Redis Sorted Set sliding window — zero database queries on the hot path. Processed transactions accumulate in an in-memory buffer that flushes to PostgreSQL in batches.
 
 ---
 
-## Anomaly Detection Rules
+## Anomaly Detection
 
-All detection runs against a **5-minute sliding window** stored as a Redis Sorted Set per user. Scores are Unix timestamps; members encode `txn_id:amount`. The window is maintained with a pipelined `ZADD` → `ZREMRANGEBYSCORE` → `ZRANGEBYSCORE` → `EXPIRE` in a single Redis round-trip.
+All detection runs against a **5-minute sliding window** stored as a Redis Sorted Set per user. The window is maintained with a pipelined `ZADD` → `ZREMRANGEBYSCORE` → `ZRANGEBYSCORE` → `EXPIRE` in a **single Redis round-trip**.
 
 | Rule | What It Catches | Logic | Severity |
 |------|----------------|-------|----------|
-| **Velocity** | Automated / bot-like bursts | > 10 transactions from one user in 60 seconds | HIGH |
-| **Spike** | Stolen card, account takeover | Single amount > 3× the user's 5-minute rolling average | CRITICAL |
-| **Rapid-fire** | Script-driven fraud | Two transactions from the same user within 1 second | MEDIUM |
+| **Velocity** | Bot-like transaction bursts | > 10 txns from one user in 60s | HIGH |
+| **Spike** | Stolen card / account takeover | Amount > 3× the user's 5-min rolling avg | CRITICAL |
+| **Rapid-fire** | Script-driven fraud | Two txns from the same user within 1s | MEDIUM |
 
-Rules are isolated async functions in `anomaly_rules.py` — adding a new rule means writing one function and appending it to the `evaluate_transaction` gather call.
+Rules are isolated async functions — adding a new rule means writing one function and appending it to a single `asyncio.gather()` call.
 
 ---
 
@@ -58,60 +56,53 @@ Rules are isolated async functions in `anomaly_rules.py` — adding a new rule m
 
 | Layer | Technology | Why |
 |-------|-----------|-----|
-| Language | Python 3.11+ (asyncio) | Async-native, clean concurrency model |
-| Message Bus | Redis Streams | Consumer groups + acknowledgment without Kafka's operational weight |
-| Hot State | Redis Sorted Sets | O(log N) sliding window queries, sub-millisecond latency |
-| Persistence | PostgreSQL | ACID guarantees for audit trail and historical analysis |
-| Batch Writer | In-memory buffer | Dual-trigger flush (size OR timer) — same pattern as AWS Kinesis Firehose |
+| Language | Python 3.11+ / asyncio | Async-native, clean concurrency model |
+| Message bus | Redis Streams | Consumer groups + ack without Kafka's operational weight |
+| Hot state | Redis Sorted Sets | O(log N) sliding window queries, sub-ms latency |
+| Persistence | PostgreSQL 16 | ACID audit trail and historical analysis |
+| Validation | Pydantic v2 | Type-safe data contracts across all components |
+| Batch writes | In-memory buffer | Dual-trigger flush (size OR timer) — same pattern as Kinesis Firehose |
+| CI | GitHub Actions | Lint (Ruff) + tests on every push |
+| Infra | Docker Compose | One command: `docker compose up` |
 
 ---
 
 ## Quick Start
 
-### Prerequisites
-
-- Python 3.11+
-- Docker (for Redis)
-
-### Setup
-
 ```bash
-# Clone the repo
-git clone https://github.com/YOUR_USERNAME/realtime-anomaly-engine.git
-cd realtime-anomaly-engine
+# Clone
+git clone https://github.com/YOUR_USERNAME/sentinel-fi.git
+cd sentinel-fi
 
-# Start Redis
-docker run -d --name redis-anomaly -p 6379:6379 redis:7-alpine
+# Start Redis + Postgres
+docker compose up -d
 
-# Install dependencies
-pip install -r requirements.txt
+# Install the project (editable mode + dev tools)
+pip install -e ".[dev]"
 
-# Terminal 1 — Start the consumer
-python engine/consumer.py
+# Terminal 1 — Consumer
+python -m src.consumer
 
-# Terminal 2 — Start the producer
-python engine/producer.py --tps 75
+# Terminal 2 — Producer
+python -m src.producer --tps 75
 ```
 
 You should see anomaly flags within seconds:
 
 ```
-[Producer] Connected to Redis at localhost:6379
-[Producer] Target rate: 75 TPS → stream 'transactions:stream'
-...
-🚨 [CRITICAL] SPIKE: user=user_0023 $1,847.32 — $1847.32 is 14.2x the 5-min avg of $130.09 (threshold: 3.0x)
+🚨 [CRITICAL] SPIKE: user=user_0023 $1847.32 — $1847.32 is 14.2x the 5-min avg of $130.09 (threshold: 3.0x)
 🚨 [HIGH] VELOCITY: user=user_0012 — 12 transactions in last 60s (threshold: 10)
 ```
 
-### Scaling Workers
+### Scaling
 
 ```bash
-# Multiple async workers in a single process
-python engine/consumer.py --workers 3
+# Multiple async workers in one process
+python -m src.consumer --workers 3
 
 # Or separate processes for true parallelism
-python engine/consumer.py --worker-id w1 &
-python engine/consumer.py --worker-id w2 &
+python -m src.consumer --worker-id w1 &
+python -m src.consumer --worker-id w2 &
 ```
 
 ---
@@ -119,45 +110,60 @@ python engine/consumer.py --worker-id w2 &
 ## Project Structure
 
 ```
-realtime-anomaly-engine/
-├── README.md
+sentinel-fi/
+├── .github/
+│   └── workflows/
+│       └── ci.yml              # GitHub Actions: lint + test on every push
+├── data/                       # Mock data samples, seed files
+├── docker/
+│   └── init.sql                # PostgreSQL schema (auto-runs on first compose up)
+├── src/
+│   ├── __init__.py
+│   ├── config.py               # All tunable parameters (env vars with defaults)
+│   ├── models.py               # Pydantic v2 models (Transaction, Anomaly, Severity)
+│   ├── database.py             # Redis + PostgreSQL connection management
+│   ├── producer.py             # Async mock transaction generator → Redis Stream
+│   ├── consumer.py             # Stream reader + worker orchestration
+│   ├── anomaly_rules.py        # Pluggable detection (velocity, spike, rapid-fire)
+│   └── batch_inserter.py       # In-memory buffer with dual-trigger flush
+├── tests/
+│   └── test_anomaly_rules.py   # Unit + integration test patterns
+├── .env.example                # Environment template (copy to .env)
 ├── .gitignore
-├── requirements.txt
-└── engine/
-    ├── __init__.py
-    ├── config.py              # All tunable parameters (TPS, thresholds, Redis/PG settings)
-    ├── producer.py            # Async mock transaction generator → Redis Stream
-    ├── consumer.py            # Stream reader with Consumer Group + worker orchestration
-    ├── anomaly_rules.py       # Pluggable detection rules (velocity, spike, rapid-fire)
-    └── batch_inserter.py      # In-memory buffer with size + timer dual-trigger flush
+├── docker-compose.yml          # One command: redis + postgres + schema
+├── pyproject.toml              # Modern Python project config
+└── README.md
 ```
 
 ---
 
-## Key Design Decisions
+## Design Decisions
 
 **Why Redis Sorted Sets instead of application-level state?**
-Sorted Sets give you O(log N) range queries scored by timestamp — purpose-built for sliding windows. Keeping state in Redis rather than in-process memory means multiple consumer workers share the same window without coordination. It also survives worker restarts.
+Sorted Sets give you O(log N) range queries scored by timestamp — purpose-built for sliding windows. Keeping state in Redis means multiple consumer workers share the same window without coordination, and windows survive worker restarts.
 
 **Why pipeline all sorted set operations?**
-Each transaction requires a `ZADD`, `ZREMRANGEBYSCORE`, `ZRANGEBYSCORE`, and `EXPIRE`. Without pipelining, that's 4 network round-trips × 75 TPS = 300 Redis calls/sec. With `redis.pipeline()`, it's 75 round-trips/sec — a 4× reduction in network overhead from a single line of code.
+Each transaction requires `ZADD` + `ZREMRANGEBYSCORE` + `ZRANGEBYSCORE` + `EXPIRE`. Without pipelining: 4 round-trips × 75 TPS = 300 Redis calls/sec. With `redis.pipeline()`: 75 calls/sec — a 4× reduction from one line of code.
 
 **Why batch inserts instead of per-transaction writes?**
-At 75 TPS, individual `INSERT` statements would create 75 database connections or round-trips per second — each carrying TCP overhead, connection pool pressure, and WAL fsync cost. The `BatchInserter` accumulates 50 transactions and flushes them in a single `executemany()`, reducing write amplification by ~50×. The dual trigger (size OR 5-second timer) ensures both throughput under load and freshness under low traffic.
+At 75 TPS, individual INSERTs create 75 round-trips/sec with TCP overhead, pool pressure, and WAL fsync cost. The `BatchInserter` accumulates 50 transactions and flushes in a single `executemany()`, cutting write amplification by ~50×. The dual trigger (size OR timer) ensures throughput under load and freshness under low traffic.
 
 **Why Redis Streams over Kafka?**
-At this scale (< 1,000 TPS), Redis Streams provide the same consumer-group semantics — automatic load balancing, message acknowledgment, pending entry lists — without requiring a JVM, ZooKeeper/KRaft, or multi-broker configuration. This is a deliberate scope decision, not a limitation.
+At < 1,000 TPS, Redis Streams provide the same consumer-group semantics — load balancing, acknowledgment, pending entry lists — without a JVM, ZooKeeper/KRaft, or multi-broker setup. A deliberate scope decision, not a limitation.
 
 ---
 
 ## Roadmap
 
-- [ ] **Observability** — Prometheus metrics (`prometheus_client`) for TPS, anomaly rate, p99 latency; Grafana dashboard
-- [ ] **PostgreSQL integration** — `asyncpg` with connection pooling, schema migrations via Alembic
-- [ ] **FastAPI endpoints** — `/health`, `/metrics`, `/anomalies?user_id=X` query API
-- [ ] **Docker Compose** — Single `docker compose up` for Redis + Postgres + engine
-- [ ] **Additional rules** — Geo-impossible travel, merchant category mismatch, time-of-day deviation
-- [ ] **Load testing** — Benchmark with 500+ TPS, measure consumer lag and detection latency
+- [ ] Core engine: producer, consumer, anomaly rules, batch inserter
+- [ ] Pydantic models for type-safe data contracts
+- [ ] Docker Compose for one-command infrastructure
+- [ ] GitHub Actions CI pipeline
+- [ ] Prometheus metrics + Grafana dashboard
+- [ ] Real PostgreSQL integration via `asyncpg`
+- [ ] FastAPI endpoints: `/health`, `/metrics`, `/anomalies`
+- [ ] Additional rules: geo-impossible travel, merchant mismatch
+- [ ] Load testing: benchmark at 500+ TPS
 
 ---
 
