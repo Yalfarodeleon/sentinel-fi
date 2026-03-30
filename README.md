@@ -114,7 +114,8 @@ sentinel-fi/
 ├── .github/
 │   └── workflows/
 │       └── ci.yml              # GitHub Actions: lint + test on every push
-├── data/                       # Mock data samples, seed files
+├── data/
+│   └── README.md               # Mock data samples, seed files
 ├── docker/
 │   └── init.sql                # PostgreSQL schema (auto-runs on first compose up)
 ├── src/
@@ -127,6 +128,7 @@ sentinel-fi/
 │   ├── anomaly_rules.py        # Pluggable detection (velocity, spike, rapid-fire)
 │   └── batch_inserter.py       # In-memory buffer with dual-trigger flush
 ├── tests/
+│   ├── __init__.py
 │   └── test_anomaly_rules.py   # Unit + integration test patterns
 ├── .env.example                # Environment template (copy to .env)
 ├── .gitignore
