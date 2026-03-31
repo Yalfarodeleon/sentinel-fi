@@ -1,0 +1,31 @@
+# ── Python ──
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+
+# ── Environment ──
+.env
+
+# ── IDE ──
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# ── OS ──
+.DS_Store
+Thumbs.db
+
+# ── Docker local data ──
+data/*.sql
+data/*.dump
+
+# ── Testing ──
+.coverage
+htmlcov/
+.pytest_cache/
