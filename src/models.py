@@ -3,8 +3,7 @@ Data models — Pydantic v2 for validation, serialization, and clear contracts
 between the producer, consumer, and anomaly rules.
 """
 
-from enum import Enum
-from typing import Optional
+from enum import StrEnum
 
 from pydantic import BaseModel, Field
 
@@ -19,7 +18,7 @@ class Transaction(BaseModel):
     merchant: str
 
 
-class Severity(str, Enum):
+class Severity(StrEnum):
     """Anomaly severity levels, ordered by urgency."""
 
     LOW = "LOW"

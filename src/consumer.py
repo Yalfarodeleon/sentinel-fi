@@ -8,16 +8,16 @@ Usage:
     python -m src.consumer --worker-id w2   # Named worker (multi-process)
 """
 
-import asyncio
 import argparse
+import asyncio
 
 import redis.asyncio as aioredis
 
-from src.config import STREAM_KEY, CONSUMER_GROUP, CONSUMER_NAME_PREFIX
-from src.database import get_redis_pool, ensure_consumer_group
-from src.models import Transaction
 from src.anomaly_rules import evaluate_transaction
 from src.batch_inserter import BatchInserter
+from src.config import CONSUMER_GROUP, CONSUMER_NAME_PREFIX, STREAM_KEY
+from src.database import ensure_consumer_group, get_redis_pool
+from src.models import Transaction
 
 
 async def process_message(

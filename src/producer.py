@@ -7,16 +7,20 @@ Usage:
     python -m src.producer --tps 100    # Override TPS
 """
 
-import asyncio
 import argparse
+import asyncio
 import random
 import time
 import uuid
 
 from src.config import (
-    DEFAULT_TPS, USER_POOL_SIZE,
-    MERCHANTS, NORMAL_AMOUNT_RANGE, SPIKE_AMOUNT_RANGE, SPIKE_PROBABILITY,
+    DEFAULT_TPS,
+    MERCHANTS,
+    NORMAL_AMOUNT_RANGE,
+    SPIKE_AMOUNT_RANGE,
+    SPIKE_PROBABILITY,
     STREAM_KEY,
+    USER_POOL_SIZE,
 )
 from src.database import redis_client
 from src.models import Transaction
@@ -45,7 +49,7 @@ async def produce(tps: int) -> None:
     during long dev sessions.
     """
     async with redis_client() as r:
-        print(f"[Producer] Connected to Redis")
+        print("[Producer] Connected to Redis")
         print(f"[Producer] Target rate: {tps} TPS → stream '{STREAM_KEY}'")
 
         interval = 1.0 / tps

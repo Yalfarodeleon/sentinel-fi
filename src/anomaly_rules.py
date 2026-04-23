@@ -5,15 +5,14 @@ appending it to the gather call in evaluate_transaction().
 """
 
 import asyncio
-from typing import Optional
 
 import redis.asyncio as aioredis
 
 from src.config import (
     SLIDING_WINDOW_SECONDS,
-    VELOCITY_WINDOW_SECONDS,
-    VELOCITY_THRESHOLD,
     SPIKE_MULTIPLIER,
+    VELOCITY_THRESHOLD,
+    VELOCITY_WINDOW_SECONDS,
 )
 from src.models import Anomaly, Severity, Transaction
 
@@ -54,7 +53,7 @@ async def update_sliding_window(
 async def check_velocity(
     window_entries: list[tuple[str, float]],
     txn: Transaction,
-) -> Optional[Anomaly]:
+) -> Anomaly | None:
     """
     Velocity: More than VELOCITY_THRESHOLD transactions from the same
     user in the last VELOCITY_WINDOW_SECONDS (60s).
@@ -81,7 +80,7 @@ async def check_velocity(
 async def check_spike(
     window_entries: list[tuple[str, float]],
     txn: Transaction,
-) -> Optional[Anomaly]:
+) -> Anomaly | None:
     """
     Spike: Transaction amount exceeds SPIKE_MULTIPLIER times the rolling
     average. Requires at least 3 prior transactions to avoid false positives.
@@ -123,7 +122,7 @@ async def check_spike(
 async def check_rapid_fire(
     window_entries: list[tuple[str, float]],
     txn: Transaction,
-) -> Optional[Anomaly]:
+) -> Anomaly | None:
     """
     Rapid-fire: Another transaction from the same user within 1 second.
     Catches automated/bot-like behavior.

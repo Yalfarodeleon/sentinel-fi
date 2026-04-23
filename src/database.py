@@ -3,12 +3,12 @@ Database connections — Redis (active) and PostgreSQL (future).
 Provides async context managers for clean setup/teardown.
 """
 
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
-from typing import AsyncGenerator
 
 import redis.asyncio as aioredis
 
-from src.config import REDIS_URL, STREAM_KEY, CONSUMER_GROUP
+from src.config import CONSUMER_GROUP, REDIS_URL, STREAM_KEY
 
 
 async def get_redis_pool() -> aioredis.ConnectionPool:

@@ -7,7 +7,6 @@ real Postgres, swap _flush() internals with asyncpg's executemany().
 """
 
 import asyncio
-from typing import Optional
 
 from src.config import BATCH_SIZE, FLUSH_INTERVAL_SECONDS
 from src.models import Anomaly, Transaction
@@ -32,7 +31,7 @@ class BatchInserter:
         self._txn_buffer: list[Transaction] = []
         self._anomaly_buffer: list[Anomaly] = []
         self._lock = asyncio.Lock()
-        self._flush_task: Optional[asyncio.Task] = None
+        self._flush_task: asyncio.Task | None = None
         self._total_flushed = 0
         self._total_anomalies_flushed = 0
 

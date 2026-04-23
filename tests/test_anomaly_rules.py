@@ -7,7 +7,7 @@ import time
 
 import pytest
 
-from src.models import Transaction, Severity
+from src.models import Severity, Transaction
 
 
 def _make_txn(**overrides) -> Transaction:
