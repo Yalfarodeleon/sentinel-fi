@@ -57,3 +57,19 @@ SPIKE_MULTIPLIER = _env_float("SPIKE_MULTIPLIER", 3.0)
 # ── Batch Inserter ──
 BATCH_SIZE = 50
 FLUSH_INTERVAL_SECONDS = 5.0
+
+# ── Dashboard / Pub-Sub ──
+# Redis Pub/Sub channels for dashboard events. Fire-and-forget: if no
+# dashboard is subscribed, events are dropped. This is intentional —
+# the dashboard is a live view, not an audit log (that's Postgres).
+TXN_CHANNEL = "events:txn"
+ANOMALY_CHANNEL = "events:anomaly"
+
+# Sorted set of user_id -> anomaly count, for "top flagged users" panel.
+# Accumulates for the lifetime of the Redis instance; can be reset via
+# the dashboard's /api/reset-stats endpoint during demos.
+FLAGGED_USERS_KEY = "stats:flagged_users"
+
+# Dashboard HTTP server
+DASHBOARD_HOST = _env("DASHBOARD_HOST", "127.0.0.1")
+DASHBOARD_PORT = _env_int("DASHBOARD_PORT", 8000)
