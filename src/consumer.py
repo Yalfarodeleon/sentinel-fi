@@ -18,7 +18,7 @@ from src.batch_inserter import BatchInserter
 from src.config import CONSUMER_GROUP, CONSUMER_NAME_PREFIX, STREAM_KEY
 from src.database import ensure_consumer_group, get_redis_pool
 from src.models import Transaction
-
+from src.events import publish_events
 
 async def process_message(
     r: aioredis.Redis,
@@ -45,6 +45,7 @@ async def process_message(
                 f"  🚨 [{a.severity.value}] {a.rule.upper()}: "
                 f"user={a.user_id} ${a.amount:.2f} — {a.detail}"
             )
+    await publish_events(r, txn, anomalies)
 
     await inserter.add(txn, anomalies)
 
