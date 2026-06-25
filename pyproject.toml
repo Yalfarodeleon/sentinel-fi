@@ -23,6 +23,10 @@ db = [
 observability = [
     "prometheus-client>=0.20.0",
 ]
+dashboard = [
+    "fastapi>=0.110.0",
+    "uvicorn[standard]>=0.27.0",
+]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
