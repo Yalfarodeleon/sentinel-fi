@@ -1,1 +1,180 @@
-"<h1>Sentinel-FI dashboard - Phase 3 coming soon</h1>"
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sentinel-FI Dashboard</title>
+    <style>
+        /* ─── Reset and base ─────────────────────────────────────── */
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', monospace;
+            background: #0a0e1a;
+            color: #e4e6eb;
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        /* ─── Header ─────────────────────────────────────────────── */
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 16px;
+            border-bottom: 1px solid #2a2f3d;
+        }
+
+        h1 {
+            font-size: 24px;
+            font-weight: 600;
+            color: #fff;
+        }
+
+        h1 .accent { color: #4ade80; }
+
+        .status {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 13px;
+            color: #9ca3af;
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #6b7280;
+        }
+
+        .status-dot.connected { background: #4ade80; box-shadow: 0 0 8px #4ade80; }
+        .status-dot.disconnected { background: #ef4444; }
+
+        /* ─── Grid layout: 2x2 panels ────────────────────────────── */
+        .grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            grid-template-rows: 1fr 1fr;
+            gap: 16px;
+            height: calc(100vh - 100px);
+        }
+
+        .panel {
+            background: #111827;
+            border: 1px solid #1f2937;
+            border-radius: 8px;
+            padding: 16px;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .panel-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+            padding-bottom: 8px;
+            border-bottom: 1px solid #1f2937;
+        }
+
+        .panel-title {
+            font-size: 13px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: #9ca3af;
+        }
+
+        .panel-count {
+            font-size: 12px;
+            color: #6b7280;
+            font-variant-numeric: tabular-nums;
+        }
+
+        .panel-body {
+            flex: 1;
+            overflow-y: auto;
+            font-size: 13px;
+        }
+
+        /* Scrollbar styling */
+        .panel-body::-webkit-scrollbar { width: 6px; }
+        .panel-body::-webkit-scrollbar-track { background: transparent; }
+        .panel-body::-webkit-scrollbar-thumb { background: #374151; border-radius: 3px; }
+
+        /* ─── Placeholder for empty panels ───────────────────────── */
+        .placeholder {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+            color: #4b5563;
+            font-style: italic;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>Sentinel<span class="accent">-FI</span> Dashboard</h1>
+        <div class="status">
+            <div class="status-dot" id="ws-status"></div>
+            <span id="ws-status-text">Connecting...</span>
+        </div>
+    </header>
+
+    <div class="grid">
+        <!-- Panel 1: Live transactions -->
+        <div class="panel">
+            <div class="panel-header">
+                <span class="panel-title">Live Transactions</span>
+                <span class="panel-count" id="txn-count">0 processed</span>
+            </div>
+            <div class="panel-body" id="txn-feed">
+                <div class="placeholder">Waiting for transactions...</div>
+            </div>
+        </div>
+
+        <!-- Panel 2: Anomaly alerts -->
+        <div class="panel">
+            <div class="panel-header">
+                <span class="panel-title">Anomaly Alerts</span>
+                <span class="panel-count" id="anomaly-count">0 flagged</span>
+            </div>
+            <div class="panel-body" id="anomaly-feed">
+                <div class="placeholder">No anomalies yet</div>
+            </div>
+        </div>
+
+        <!-- Panel 3: TPS chart -->
+        <div class="panel">
+            <div class="panel-header">
+                <span class="panel-title">Throughput (TPS)</span>
+                <span class="panel-count" id="tps-current">0 tps</span>
+            </div>
+            <div class="panel-body">
+                <div class="placeholder">TPS chart loading...</div>
+            </div>
+        </div>
+
+        <!-- Panel 4: Top flagged users -->
+        <div class="panel">
+            <div class="panel-header">
+                <span class="panel-title">Top Flagged Users</span>
+                <span class="panel-count" id="flagged-total">— users</span>
+            </div>
+            <div class="panel-body" id="flagged-feed">
+                <div class="placeholder">Loading...</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Phase 3.2+ will populate the panels.
+        console.log('Sentinel-FI dashboard shell loaded');
+    </script>
+</body>
+</html>
