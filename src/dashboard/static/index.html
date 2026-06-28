@@ -1,12 +1,17 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Sentinel-FI Dashboard</title>
     <style>
         /* ─── Reset and base ─────────────────────────────────────── */
-        * { box-sizing: border-box; margin: 0; padding: 0; }
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
 
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', monospace;
@@ -32,7 +37,9 @@
             color: #fff;
         }
 
-        h1 .accent { color: #4ade80; }
+        h1 .accent {
+            color: #4ade80;
+        }
 
         .status {
             display: flex;
@@ -49,8 +56,14 @@
             background: #6b7280;
         }
 
-        .status-dot.connected { background: #4ade80; box-shadow: 0 0 8px #4ade80; }
-        .status-dot.disconnected { background: #ef4444; }
+        .status-dot.connected {
+            background: #4ade80;
+            box-shadow: 0 0 8px #4ade80;
+        }
+
+        .status-dot.disconnected {
+            background: #ef4444;
+        }
 
         /* ─── Grid layout: 2x2 panels ────────────────────────────── */
         .grid {
@@ -101,9 +114,18 @@
         }
 
         /* Scrollbar styling */
-        .panel-body::-webkit-scrollbar { width: 6px; }
-        .panel-body::-webkit-scrollbar-track { background: transparent; }
-        .panel-body::-webkit-scrollbar-thumb { background: #374151; border-radius: 3px; }
+        .panel-body::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        .panel-body::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        .panel-body::-webkit-scrollbar-thumb {
+            background: #374151;
+            border-radius: 3px;
+        }
 
         /* ─── Placeholder for empty panels ───────────────────────── */
         .placeholder {
@@ -115,8 +137,50 @@
             font-style: italic;
             font-size: 12px;
         }
+
+        /* ─── Transaction rows ──────────────────────────────────────── */
+        .txn-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr auto;
+            gap: 12px;
+            padding: 6px 8px;
+            border-bottom: 1px solid #1a1f2e;
+            font-variant-numeric: tabular-nums;
+            animation: slideIn 0.15s ease-out;
+        }
+
+        .txn-row:hover {
+            background: #1a1f2e;
+        }
+
+        .txn-user {
+            color: #93c5fd;
+            font-weight: 500;
+        }
+
+        .txn-merchant {
+            color: #9ca3af;
+        }
+
+        .txn-amount {
+            color: #fbbf24;
+            text-align: right;
+        }
+
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateY(-4px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
     </style>
 </head>
+
 <body>
     <header>
         <h1>Sentinel<span class="accent">-FI</span> Dashboard</h1>
@@ -173,8 +237,84 @@
     </div>
 
     <script>
-        // Phase 3.2+ will populate the panels.
-        console.log('Sentinel-FI dashboard shell loaded');
+        // ─── State ──────────────────────────────────────────────────
+        const MAX_TXN_ROWS = 50;  // Cap DOM size — feed is "recent", not "all"
+        let txnCount = 0;
+        let ws = null;
+
+        // ─── DOM refs ───────────────────────────────────────────────
+        const statusDot = document.getElementById('ws-status');
+        const statusText = document.getElementById('ws-status-text');
+        const txnFeed = document.getElementById('txn-feed');
+        const txnCountEl = document.getElementById('txn-count');
+
+        // ─── WebSocket connection with auto-reconnect ───────────────
+        function connect() {
+            const wsUrl = `ws://${window.location.host}/ws/live`;
+            console.log('Connecting to', wsUrl);
+            ws = new WebSocket(wsUrl);
+
+            ws.onopen = () => {
+                statusDot.classList.remove('disconnected');
+                statusDot.classList.add('connected');
+                statusText.textContent = 'Connected';
+            };
+
+            ws.onclose = () => {
+                statusDot.classList.remove('connected');
+                statusDot.classList.add('disconnected');
+                statusText.textContent = 'Disconnected — retrying...';
+                // Reconnect after 2 seconds. Avoids hammering the server if it's down.
+                setTimeout(connect, 2000);
+            };
+
+            ws.onerror = (err) => {
+                console.error('WebSocket error:', err);
+            };
+
+            ws.onmessage = (event) => {
+                try {
+                    const envelope = JSON.parse(event.data);
+                    // Server wraps each event as { type: "txn"|"anomaly", data: "<json-string>" }
+                    const payload = JSON.parse(envelope.data);
+
+                    if (envelope.type === 'txn') {
+                        handleTransaction(payload);
+                    }
+                    // Anomaly handling comes in commit 3.3
+                } catch (e) {
+                    console.error('Bad message:', event.data, e);
+                }
+            };
+        }
+
+        // ─── Transaction feed ───────────────────────────────────────
+        function handleTransaction(txn) {
+            txnCount++;
+            txnCountEl.textContent = `${txnCount.toLocaleString()} processed`;
+
+            // Clear placeholder on first event
+            if (txnCount === 1) txnFeed.innerHTML = '';
+
+            const row = document.createElement('div');
+            row.className = 'txn-row';
+            row.innerHTML = `
+            <span class="txn-user">${txn.user_id}</span>
+            <span class="txn-merchant">${txn.merchant}</span>
+            <span class="txn-amount">$${txn.amount.toFixed(2)}</span>
+        `;
+            // Newest on top
+            txnFeed.insertBefore(row, txnFeed.firstChild);
+
+            // Trim old rows — DOM nodes are not free at 75/sec
+            while (txnFeed.children.length > MAX_TXN_ROWS) {
+                txnFeed.removeChild(txnFeed.lastChild);
+            }
+        }
+
+        // ─── Boot ───────────────────────────────────────────────────
+        connect();
     </script>
 </body>
+
 </html>
